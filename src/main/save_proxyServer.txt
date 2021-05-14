@@ -1,0 +1,264 @@
+import javax.swing.*;
+import java.io.*;
+import java.net.ServerSocket;
+import java.net.Socket;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.List;
+
+/**
+ * A server program which accepts requests from clients to capitalize strings.
+ * When clients connect, a new thread is started to handle an interactive dialog
+ * in which the client sends in a string and the server thread sends back the
+ * capitalized version of the string.
+ * <p>
+ * The program is runs in an infinite loop, so shutdown is platform dependent.
+ * If you ran it from a console window with the "java" interpreter, Ctrl+C will
+ * shut it down.
+ */
+public class ProxyServer {
+
+    /**
+     * Application method to run the server listening on port 9898. When a client
+     * connects, the server spawns a new thread to do the servicing and immediately
+     * returns to listening. The server keeps a unique client number for each client
+     * that connects just to show interesting logging messages. It is certainly not
+     * necessary to do this.
+     */
+    public static void main(String[] args) throws Exception {
+        System.out.println("The Proxy server is running.");
+        int connection_number = 1;
+        try (ServerSocket listener = new ServerSocket(9998)) {
+            while (true) {
+                System.out.println("Waiting for a client to connect...");
+                new RequestHandler(listener.accept(), connection_number++).start();
+            }
+        }
+    }
+}
+
+/**
+ * A thread to handle capitalization requests on a particular socket.
+ */
+class RequestHandler extends Thread {
+    private final Socket socket;
+    private final int connection_number;
+
+    public RequestHandler(Socket socket, int connection_number) {
+        this.socket = socket;
+        this.connection_number = connection_number;
+        System.out.println(String.format("\n----------- [connection: %d | socket: %d] ------------",
+                connection_number,
+                socket.getPort()));
+//        System.out.println(socket.getPort());
+//        System.out.println(socket.getInetAddress().getHostAddress());
+    }
+
+    /**
+     * Services this thread's client by first sending the client a welcome message
+     * then repeatedly reading strings and sending back the capitalized version of
+     * the string.
+     */
+    public void run() {
+        try {
+
+            boolean connect_request = true;
+
+            InputStream input = socket.getInputStream();
+            OutputStream to_client = socket.getOutputStream();
+//
+//            ByteArrayOutputStream baos = new ByteArrayOutputStream();
+            // Code simulating the copy
+            // You could alternatively use NIO
+            // And please, unlike me, do something about the Exceptions :D
+
+//            byte[] buffer = new byte[1024];
+//            int len;
+//            while ((len = input.read(buffer)) > -1) {
+//                baos.write(buffer, 0, len);
+//            }
+//            baos.flush();
+            // Open new InputStreams using recorded bytes
+            // Can be repeated as many times as you wish
+
+
+//            InputStream from_client_firstClone = new ByteArrayInputStream(baos.toByteArray());
+//            InputStream from_client_secondClone = new ByteArrayInputStream(baos.toByteArray());
+
+
+//            HttpParser httpParser = new HttpParser(from_client_firstClone);
+//            System.out.println(httpParser.parseRequest());
+//
+//            URL url = new URL(httpParser.getRequestURL());
+//            String remote_server = url.getHost();
+//            int remote_port = url.getPort();
+//            System.out.println(url.getHost());
+//            System.out.println(httpParser.getHeaders());
+
+//            BufferedReader in = new BufferedReader(new InputStreamReader(from_client_secondClone));
+//            while (true) {
+//                String input_string = in.readLine();
+//                if (input_string == null || input_string.isEmpty()) {
+//                    break;
+//                }
+//                if (input_string.equals("Quit!")) {
+//                    System.out.println("Goodbye!");
+//                    break;
+//                }
+//                System.out.println(input_string);
+//            }
+
+            BufferedReader br = new BufferedReader(new InputStreamReader(input));
+            StringBuilder requestBuilder = new StringBuilder();
+            String line;
+
+            Thread.sleep(10);
+            while (true) {
+                line = br.readLine();
+                if (line == null)
+                    break;
+                if (line.isBlank())
+                    break;
+                requestBuilder.append(line + "\r\n");
+//                while (!(line = br.readLine()).isBlank()) {
+//                    requestBuilder.append(line + "\r\n");
+//                }
+            }
+
+            String http_request = requestBuilder.toString();
+            String[] requestsLines = http_request.split("\r\n");
+            String[] requestLine = requestsLines[0].split(" ");
+            String method = requestLine[0];
+
+            System.out.println(connection_number);
+            System.out.println(socket);
+            System.out.println(method);
+            System.out.println("http_request " + http_request);
+
+            String path = requestLine[1]; // todo : this can cause problem
+            String version = requestLine[2];
+
+
+            String remote_host = path.split(":")[0];
+            int remote_port = 80;
+            if (path.contains(":"))
+                remote_port = Integer.parseInt(path.split(":")[1]);
+
+
+
+            List<String> headers = new ArrayList<>();
+            for (int h = 2; h < requestsLines.length; h++) {
+                String header = requestsLines[h];
+                headers.add(header);
+            }
+
+            Socket remote_socket = new Socket(remote_host, remote_port);
+            InputStream from_remote_server = remote_socket.getInputStream();
+            OutputStream to_remote_server = remote_socket.getOutputStream();
+
+            System.out.println(remote_host);
+            System.out.println(remote_port);
+            System.out.println(remote_socket);
+
+//            String mes = "HTTP/1.1 200 OK";
+//            PrintWriter out = new PrintWriter(to_client, true);
+//            out.print(mes);
+//
+            String successful_message = "HTTP/1.1 200 OK\r\n\r\n";
+            byte[] bytes = successful_message.getBytes();
+            to_client.write(bytes, 0, bytes.length);
+
+            System.out.println("sent successful message");
+            System.out.println(bytes);
+            System.out.println(successful_message);
+
+
+//            System.out.println("------------------");
+//            String accessLog = String.format("Client %s, method %s, path %s, version %s, host %s, headers %s",
+//                    socket.toString(), method, path, version, host, headers.toString());
+//            System.out.println(request);
+//            System.out.println(accessLog);
+//            System.out.println("------------------");
+
+//
+
+
+//            System.out.println("i want sending");
+//            String messages [] = {
+//                    "HTTP/1.1 200 OK\r\n",
+//                    "ContentType: text/html\r\n",
+//                    "\r\n",
+//                    "\r\n\r\n",
+//            };
+////
+////
+//
+//
+//                String messages[] = {
+//                        "HTTP/1.1 200 OK\r\n",
+//
+//                };
+//                for (String s : messages) {
+//                    Thread.sleep(1);
+//                    byte b[] = s.getBytes();
+//                    to_client.write(b, 0, b.length);
+//                    to_client.flush();
+//                }
+
+//            System.out.println("sending done");
+
+
+//            to_client.write("HTTP/1.1 200 OK\r\n".getBytes());
+//            to_client.write(("ContentType: text/html\r\n").getBytes());
+//            to_client.write("\r\n".getBytes());
+//            to_client.write("<b>It works!</b>".getBytes());
+//            to_client.write("\r\n\r\n".getBytes());
+//            to_client.flush();
+
+
+//            while (!(line = br.readLine()).isBlank()) {
+//                requestBuilder.append(line + "\r\n");
+//            }
+//            connect_request = requestBuilder.toString();
+//            System.out.println(connect_request);
+
+
+            new Thread(() -> {
+                System.out.println("sending on " + connection_number);
+                int request_bytes_read;
+                final byte[] request = new byte[1024];
+                try { // sending Http request to remote server
+                    while ((request_bytes_read = input.read(request)) != -1) { // todo : when is the -1?
+                        System.out.println(new String(request, StandardCharsets.UTF_8));
+                        to_remote_server.write(request, 0, request_bytes_read);
+                    }
+                } catch (IOException e) {
+                }
+            }).start();
+
+
+            System.out.println("receiving");
+            final byte[] reply = new byte[1024];
+            int response_bytes_read;
+            try { // sending Http response to client
+                while ((response_bytes_read = from_remote_server.read(reply)) != -1) {
+                    System.out.println(new String(reply, StandardCharsets.UTF_8));
+                    to_client.write(reply, 0, response_bytes_read);
+                }
+            } catch (IOException e) {
+            }
+
+
+        } catch (Exception e) {
+
+            System.out.println("Error handling client #" + connection_number);
+            e.printStackTrace();
+        } finally {
+            try {
+                socket.close();
+            } catch (IOException e) {
+            }
+            System.out.println("Connection with client #" + connection_number + " closed");
+        }
+    }
+}
