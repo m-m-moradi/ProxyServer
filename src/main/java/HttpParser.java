@@ -1,24 +1,12 @@
-/**
- Copyright (C) 2004  Juho Vh-Herttua
+import org.apache.commons.lang3.ArrayUtils;
 
- This program is free software; you can redistribute it and/or
- modify it under the terms of the GNU General Public License
- as published by the Free Software Foundation; either version 2
- of the License, or (at your option) any later version.
-
- This program is distributed in the hope that it will be useful,
- but WITHOUT ANY WARRANTY; without even the implied warranty of
- MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- GNU General Public License for more details.
-
- You should have received a copy of the GNU General Public License
- along with this program; if not, write to the Free Software
- Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
- */
-import java.io.*;
-import java.util.*;
-import java.text.*;
-import java.net.URLDecoder;
+import java.io.IOException;
+import java.io.InputStream;
+import java.net.URI;
+import java.net.URISyntaxException;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.Arrays;
 
 public class HttpParser {
     private static final String[][] HttpReplies = {{"100", "Continue"},
@@ -63,181 +51,183 @@ public class HttpParser {
             {"504", "Gateway Timeout"},
             {"505", "HTTP Version Not Supported"}};
 
-    private BufferedReader reader;
-    private String method, url;
-    private Hashtable headers, params;
-    private int[] ver;
+    private final InputStream inputStream;
+    private String method;
+    private String host;
+    private String version;
+    private int port;
 
-    public HttpParser(InputStream is) {
-        reader = new BufferedReader(new InputStreamReader(is));
-        method = "";
-        url = "";
-        headers = new Hashtable();
-        params = new Hashtable();
-        ver = new int[2];
+    private String requestLine;
+    private ArrayList<String> headers;
+    private ArrayList<Byte> body;
+
+    public HttpParser(InputStream inputStream) {
+        this.inputStream = inputStream;
     }
 
-    public int parseRequest() throws IOException {
-        String initial, prms[], cmd[], temp[];
-        int ret, idx, i;
+    public int readRequest() throws IOException, URISyntaxException {
 
-        ret = 200; // default is OK now
-        initial = reader.readLine();
-        if (initial == null || initial.length() == 0) return 0;
-        if (Character.isWhitespace(initial.charAt(0))) {
-            // starting whitespace, return bad request
-            return 400;
-        }
+        StringBuilder requestBuilder = new StringBuilder();
+        StringBuilder lineBuilder = new StringBuilder();
+        StringBuilder bodyBuilder = new StringBuilder();
+        ArrayList<Character> array_list_char = new ArrayList<Character>();
 
-        cmd = initial.split("\\s");
-        if (cmd.length != 3) {
-            return 400;
-        }
+        char c1, c2, c3, c4;
+        int b1, b2, b3, b4;
 
-        if (cmd[2].indexOf("HTTP/") == 0 && cmd[2].indexOf('.') > 5) {
-            temp = cmd[2].substring(5).split("\\.");
-            try {
-                ver[0] = Integer.parseInt(temp[0]);
-                ver[1] = Integer.parseInt(temp[1]);
-            } catch (NumberFormatException nfe) {
-                ret = 400;
+        while (true) {
+            while ((b1 = this.inputStream.read()) != '\r') {
+                if (b1 == -1) break;
+                c1 = (char) b1;
+                array_list_char.add(c1);
             }
+
+            b2 = this.inputStream.read(); // reading LF
+            if (array_list_char.size() == 0) // reached last CRLF
+                break;
+
+            for (Character c : array_list_char)
+                lineBuilder.append(c);
+            requestBuilder.append(lineBuilder.toString()).append("\r\n");
+            lineBuilder = new StringBuilder();
+            array_list_char.clear();
         }
-        else ret = 400;
 
-        if (cmd[0].equals("GET") || cmd[0].equals("HEAD")) {
-            method = cmd[0];
 
-            idx = cmd[1].indexOf('?');
-            if (idx < 0) url = cmd[1];
-            else {
-                url = URLDecoder.decode(cmd[1].substring(0, idx), "ISO-8859-1");
-                prms = cmd[1].substring(idx+1).split("&");
+        String http_request = requestBuilder.toString();
+        if (http_request.isBlank() || http_request.isEmpty()) {
+            return -1;
+        }
 
-                params = new Hashtable();
-                for (i=0; i<prms.length; i++) {
-                    temp = prms[i].split("=");
-                    if (temp.length == 2) {
-                        // we use ISO-8859-1 as temporary charset and then
-                        // String.getBytes("ISO-8859-1") to get the data
-                        params.put(URLDecoder.decode(temp[0], "ISO-8859-1"),
-                                URLDecoder.decode(temp[1], "ISO-8859-1"));
-                    }
-                    else if(temp.length == 1 && prms[i].indexOf('=') == prms[i].length()-1) {
-                        // handle empty string separatedly
-                        params.put(URLDecoder.decode(temp[0], "ISO-8859-1"), "");
-                    }
+        String[] lines = http_request.split("\r\n");
+        String requestLine = lines[0];
+        String[] requestLineParts = requestLine.split(" ");
+        ArrayList<String> headers = new ArrayList<>();
+        ArrayList<Byte> body = new ArrayList<>();
+
+        String method = requestLineParts[0];
+        String path = requestLineParts[1];
+        String version = requestLineParts[2];
+        String remote_host;
+        int remote_port = 80;
+
+
+        // https://datatracker.ietf.org/doc/html/rfc2616#section-5.1.2
+        if (method.equals("CONNECT")) {
+            String[] authority = path.split(":");
+            remote_host = authority[0];
+            remote_port = Integer.parseInt(authority[1]);
+        } else {
+            URI uri = new URI(path);
+            remote_host = uri.getHost();
+            if (uri.getPort() != -1)
+                remote_port = uri.getPort();
+        }
+
+        // headers
+        for (int h = 2; h < lines.length; h++) {
+            String header = lines[h];
+            headers.add(header);
+        }
+
+        // here must implement all proxy things
+        boolean there_is_host = false;
+        ArrayList<Integer> indices = new ArrayList<>();
+        for (String h : headers) {
+            if (h.contains("Content-Length:")) {
+                String byte_num_str = h.replace("Content-Length:", "");
+                byte[] chunk = new byte[1024];
+                int byte_num = Integer.parseInt(byte_num_str.trim().strip());
+                int counter = 0;
+                while (counter != byte_num) {
+                    System.out.println(String.format("byte_num : %d , counter : %d , difference : %d", byte_num, counter, byte_num - counter));
+                    counter += this.inputStream.read(chunk, 0, Math.min(1024, byte_num - counter));
+                    body.addAll(Arrays.asList(ArrayUtils.toObject(chunk)));
                 }
             }
-            parseHeaders();
-            if (headers == null) ret = 400;
-        }
-        else if (cmd[0].equals("POST")) {
-            ret = 501; // not implemented
-        }
-        else if (ver[0] == 1 && ver[1] >= 1) {
-            if (cmd[0].equals("OPTIONS") ||
-                    cmd[0].equals("PUT") ||
-                    cmd[0].equals("DELETE") ||
-                    cmd[0].equals("TRACE") ||
-                    cmd[0].equals("CONNECT")) {
-                ret = 501; // not implemented
-            }
-        }
-        else {
-            // meh not understand, bad request
-            ret = 400;
+            if (h.contains("Upgrade-Insecure-Requests"))
+                indices.add(headers.indexOf(h));
+
+            if (h.contains("Host:"))
+                there_is_host = true;
         }
 
-        if (ver[0] == 1 && ver[1] >= 1 && getHeader("Host") == null) {
-            ret = 400;
-        }
+        if(!there_is_host) headers.add("Host:");
 
-        return ret;
+        for (Integer index : indices)
+            headers.remove((int) index);
+
+        this.method = method;
+        this.port = remote_port;
+        this.host = remote_host;
+        this.version = version;
+        this.requestLine = requestLine;
+        this.headers = headers;
+        this.body = body;
+
+        return 0;
     }
 
-    private void parseHeaders() throws IOException {
-        String line;
-        int idx;
+    public byte[] toBytes() {
+        StringBuilder stringBuilder = new StringBuilder();
+        stringBuilder.append(this.requestLine).append("\r\n");
+        for (String h : this.headers)
+            stringBuilder.append(h).append("\r\n");
+        stringBuilder.append("\r\n");
+        ArrayList<Byte> bytes = new ArrayList<>(Arrays.asList(ArrayUtils.toObject(stringBuilder.toString().getBytes())));
+        if (this.body.size() != 0)
+            bytes.addAll(this.body);
+        return ArrayUtils.toPrimitive(bytes.toArray(new Byte[0]));
+    }
 
-        // that fscking rfc822 allows multiple lines, we don't care now
-        line = reader.readLine();
-        while (!line.equals("")) {
-            idx = line.indexOf(':');
-            if (idx < 0) {
-                headers = null;
-                break;
-            }
-            else {
-                headers.put(line.substring(0, idx).toLowerCase(), line.substring(idx+1).trim());
-            }
-            line = reader.readLine();
-        }
+    public String toString() {
+        StringBuilder stringBuilder = new StringBuilder();
+        stringBuilder.append(this.requestLine).append("\r\n");
+        for (String h : this.headers)
+            stringBuilder.append(h).append("\r\n");
+        stringBuilder.append("\r\n");
+        stringBuilder.append(getBodyAsString());
+        return stringBuilder.toString();
+    }
+
+    public String getBodyAsString() {
+        return new String(ArrayUtils.toPrimitive(this.body.toArray(new Byte[0])), StandardCharsets.UTF_8);
+    }
+
+    public static String[][] getHttpReplies() {
+        return HttpReplies;
+    }
+
+    public InputStream getInputStream() {
+        return inputStream;
     }
 
     public String getMethod() {
         return method;
     }
 
-    public String getHeader(String key) {
-        if (headers != null)
-            return (String) headers.get(key.toLowerCase());
-        else return null;
+    public String getHost() {
+        return host;
     }
 
-    public Hashtable getHeaders() {
+    public int getPort() {
+        return port;
+    }
+
+    public String getRequestLine() {
+        return requestLine;
+    }
+
+    public ArrayList<String> getHeaders() {
         return headers;
     }
 
-    public String getRequestURL() {
-        return url;
-    }
-
-    public String getParam(String key) {
-        return (String) params.get(key);
-    }
-
-    public Hashtable getParams() {
-        return params;
+    public ArrayList<Byte> getBody() {
+        return body;
     }
 
     public String getVersion() {
-        return ver[0] + "." + ver[1];
-    }
-
-    public int compareVersion(int major, int minor) {
-        if (major < ver[0]) return -1;
-        else if (major > ver[0]) return 1;
-        else if (minor < ver[1]) return -1;
-        else if (minor > ver[1]) return 1;
-        else return 0;
-    }
-
-    public static String getHttpReply(int codevalue) {
-        String key, ret;
-        int i;
-
-        ret = null;
-        key = "" + codevalue;
-        for (i=0; i<HttpReplies.length; i++) {
-            if (HttpReplies[i][0].equals(key)) {
-                ret = codevalue + " " + HttpReplies[i][1];
-                break;
-            }
-        }
-
-        return ret;
-    }
-
-    public static String getDateHeader() {
-        SimpleDateFormat format;
-        String ret;
-
-        format = new SimpleDateFormat("EEE, dd MMM yyyy HH:mm:ss", Locale.US);
-        format.setTimeZone(TimeZone.getTimeZone("GMT"));
-        ret = "Date: " + format.format(new Date()) + " GMT";
-
-        return ret;
+        return version;
     }
 }
 
