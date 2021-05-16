@@ -1,12 +1,7 @@
-import org.apache.commons.lang3.ArrayUtils;
-import org.w3c.dom.html.HTMLTableCaptionElement;
-
 import java.io.*;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.URISyntaxException;
-import java.nio.charset.StandardCharsets;
-import java.util.Arrays;
 
 
 public class ProxyServer {
@@ -81,19 +76,8 @@ class RequestHandler extends Thread {
 //                    to_remote_server.write(request, 0, request_bytes_read);
 //                }
             } catch (IOException e) {
-                try {
-                    e.printStackTrace();
-                    this.log.close();
-                    this.socket.close();
-                } catch (IOException ioException) {
-                    ioException.printStackTrace();
-                    try {
-                        this.log.close();
-                        this.socket.close();
-                    } catch (IOException ee) {
-                        ee.printStackTrace();
-                    }
-                }
+                System.out.println(this.connection_number);
+                e.printStackTrace();
             } finally {
                 try {
                     this.log.close();
@@ -113,11 +97,8 @@ class RequestHandler extends Thread {
                 this.to_client.write(reply, 0, response_bytes_read);
             }
         } catch (IOException e) {
-            try {
-                this.print((Arrays.toString(e.getStackTrace())));
-            } catch (IOException ioException) {
-                ioException.printStackTrace();
-            }
+            System.out.println(this.connection_number);
+            e.printStackTrace();
         } finally {
             try {
                 this.log.close();
@@ -138,55 +119,38 @@ class RequestHandler extends Thread {
         int len = httpParser.toBytes().length;
         to_remote_server.write(httpParser.toBytes(), 0, len);
 
-        new Thread(() -> {
-            try {
-                HttpParser from_client_to_server_msg = new HttpParser(this.from_client);
-                while(true){
-                    from_client_to_server_msg.readRequest();
-                    int msg_len = from_client_to_server_msg.toBytes().length;
-                    to_remote_server.write(from_client_to_server_msg.toBytes(),0, msg_len);
-                }
-//                int request_bytes_read;
-//                final byte[] request = new byte[1024];
-//                while ((request_bytes_read = this.from_client.read(request)) != -1) { // todo : when is the -1?
-//                    this.print(new String(request, StandardCharsets.UTF_8));
-//                    to_remote_server.write(request, 0, request_bytes_read);
-//                }
-            } catch (IOException | URISyntaxException e) {
-                try {
-                    this.print((Arrays.toString(e.getStackTrace())));
-                } catch (IOException ioException) {
-                    ioException.printStackTrace();
-                }
-            } finally {
-                try {
-                    this.log.close();
-                    this.socket.close();
-                } catch (IOException e) {
-                    e.printStackTrace();
-                }
-            }
-        }).start();
-
         try {
-            HttpParser from_server_to_client_msg = new HttpParser(from_remote_server);
-            while(true){
+            while (true) {
+
+                System.out.println("before making");
+                HttpParser from_server_to_client_msg = new HttpParser(from_remote_server);
                 from_server_to_client_msg.readRequest();
+                System.out.println("to bytes");
                 int msg_len = from_server_to_client_msg.toBytes().length;
+
+                System.out.println("i am here");
+
+                this.print("\n[[[Server to Client]]]");
+                this.print(from_server_to_client_msg.makeString());
+                this.print("\n");
                 this.to_client.write(from_server_to_client_msg.toBytes(), 0, msg_len);
+
+                System.out.println("after sending to client");
+
+                Thread.sleep(100);
+                HttpParser from_client_to_server_msg = new HttpParser(this.from_client);
+                from_client_to_server_msg.readRequest();
+                msg_len = from_client_to_server_msg.toBytes().length;
+
+                this.print("\n[[[Client to Server]]]");
+                this.print(from_client_to_server_msg.makeString());
+                this.print("\n");
+
+                to_remote_server.write(from_client_to_server_msg.toBytes(), 0, msg_len);
+
             }
-//            final byte[] reply = new byte[1024];
-//            int response_bytes_read;
-//            while ((response_bytes_read = from_remote_server.read(reply)) != -1) {
-//                this.print(new String(reply, StandardCharsets.UTF_8));
-//                this.to_client.write(reply, 0, response_bytes_read);
-//            }
-        } catch (IOException | URISyntaxException e) {
-            try {
-                this.print((Arrays.toString(e.getStackTrace())));
-            } catch (IOException ioException) {
-                ioException.printStackTrace();
-            }
+        } catch (IOException | URISyntaxException | InterruptedException e) {
+            e.printStackTrace();
         } finally {
             try {
                 this.log.close();
@@ -213,27 +177,20 @@ class RequestHandler extends Thread {
                 return;
             }
 
-            this.print(String.format("Request Line : %s", httpParser.getRequestLine()));
-            this.print(String.format("Method : %s", httpParser.getMethod()));
-            this.print(String.format("Remote host: %s", httpParser.getHost()));
-            this.print(String.format("Remote port: %s", httpParser.getPort()));
-            this.print(String.format("version : %s", httpParser.getVersion()));
+            this.print(String.format("Main Line : %s", httpParser.getMainLine()));
             this.print(String.format("headers : %s", httpParser.getHeaders()));
-            this.print(String.format("body : %s", httpParser.getBodyAsString()));
+            this.print(String.format("body : [%s]", httpParser.getBodyAsString()));
 
-            if (httpParser.getMethod().equals("CONNECT"))
+            // we are sure this is request
+            this.print(String.format("Method : %s", httpParser.getFirstLinePart1()));
+            this.print(String.format("Remote host: %s", httpParser.getHost()));
+            this.print(String.format("version : %s", httpParser.getFirstLinePart3()));
+            this.print(String.format("Remote port: %s", httpParser.getPort()));
+
+            if (httpParser.getFirstLinePart1().equals("CONNECT"))
                 this.handleHTTPS(httpParser.getHost(), httpParser.getPort());
             else
                 this.handleHTTP(httpParser.getHost(), httpParser.getPort(), httpParser);
-
-            // if method == connect
-            //      handle https
-            //      like below
-            // else
-            //      handle http
-            //      send lines + \r\n to remote server
-            //      make new thread to handle from sever to client (responses)
-            //      in below of that in main thread handle requests
 
 
         } catch (Exception e) {
