@@ -1,7 +1,12 @@
+import org.apache.commons.lang3.ArrayUtils;
+
 import java.io.*;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.URISyntaxException;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
 
 
 public class ProxyServer {
@@ -51,6 +56,7 @@ class RequestHandler extends Thread {
         Socket remote_socket = new Socket(remote_host, remote_port);
         InputStream from_remote_server = remote_socket.getInputStream();
         OutputStream to_remote_server = remote_socket.getOutputStream();
+
 
         String successful_message = "HTTP/1.1 200 OK\r\n\r\n";
         byte[] bytes = successful_message.getBytes();
@@ -109,46 +115,131 @@ class RequestHandler extends Thread {
         }
     }
 
-    public void handleHTTP(String remote_host, int remote_port, HttpParser httpParser) throws IOException {
+    public void handleHTTP(String remote_host, int remote_port, HttpParser httpParser) throws IOException, InterruptedException {
 
+
+        ArrayList<Byte> monitoring = new ArrayList<>();
         Socket remote_socket = new Socket(remote_host, remote_port);
         InputStream from_remote_server = remote_socket.getInputStream();
         OutputStream to_remote_server = remote_socket.getOutputStream();
 
-        this.print("SENDING: --");
-        int len = httpParser.toBytes().length;
-        to_remote_server.write(httpParser.toBytes(), 0, len);
 
+        this.print("SENDING: --");
+        ArrayList<Byte> message = httpParser.toBytes();
+        int chunk_size = 4096;
+        for (int i = 0; i < message.size(); i += chunk_size) {
+            List<Byte> sublist = message.subList(i, Math.min(i + chunk_size, message.size()));
+            byte[] bytes = ArrayUtils.toPrimitive(sublist.toArray(new Byte[0]));
+            to_remote_server.write(bytes, 0, bytes.length);
+        }
+
+
+        new Thread(() -> {
+            try {
+                while (true) {
+
+
+                    HttpParser from_client_to_server_msg = new HttpParser(this.from_client);
+                    if (from_client_to_server_msg.readRequest() > 0) {
+
+//                    this.print("\n[[[Client to Server]]]");
+//                    this.print(from_client_to_server_msg.makeString());
+//                    this.print("\n");
+
+                        ArrayList<Byte> CS_message = from_client_to_server_msg.toBytes();
+                        for (int i = 0; i < CS_message.size(); i += chunk_size) {
+                            List<Byte> sublist = CS_message.subList(i, Math.min(i + chunk_size, CS_message.size()));
+                            byte[] bytes = ArrayUtils.toPrimitive(sublist.toArray(new Byte[0]));
+                            to_remote_server.write(bytes, 0, bytes.length);
+                        }
+                    }
+
+
+                }
+
+            } catch (Exception e) {
+                e.printStackTrace();
+            } finally {
+                try {
+                    this.log.close();
+                    this.socket.close();
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+            }
+        }).start();
+
+
+        Thread.sleep(2000);
         try {
             while (true) {
+//                HttpParser from_server_to_client_msg = new HttpParser(from_remote_server);
+//                from_server_to_client_msg.readRequest();
 
-                System.out.println("before making");
+//                this.print("\n[[[Server to Client]]]");
+//                this.print(from_server_to_client_msg.makeString());
+//                this.print("\n");
+
+
+//                message = from_server_to_client_msg.original();
+
+//                this.to_client.write(ArrayUtils.toPrimitive(message.toArray(new Byte[0])), 0, message.size());
+
+//                for (int i = 0; i < message.size(); i += chunk_size) {
+//                    List<Byte> sublist = message.subList(i, Math.min(i + chunk_size, message.size()));
+//                    byte[] bytes = ArrayUtils.toPrimitive(sublist.toArray(new Byte[0]));
+//                    this.to_client.write(bytes, 0, bytes.length);
+//                }
+
+//                byte[][] all = splitArray(ArrayUtils.toPrimitive(message.toArray(new Byte[0])) , message.size());
+//                for (byte[] record : all)
+//                    this.to_client.write(record, 0, record.length);
+                // ------------------
+
+
                 HttpParser from_server_to_client_msg = new HttpParser(from_remote_server);
                 from_server_to_client_msg.readRequest();
-                System.out.println("to bytes");
-                int msg_len = from_server_to_client_msg.toBytes().length;
+//
+////                    this.print("\n[[[Server to Client]]]");
+////                    this.print(from_server_to_client_msg.makeString());
+////                    this.print("\n");
+//
+                ArrayList<Byte> SC_message = from_server_to_client_msg.toBytes();
+//
+                for (int i = 0; i < SC_message.size(); i += chunk_size) {
+                    List<Byte> sublist = SC_message.subList(i, Math.min(i + chunk_size, SC_message.size()));
+                    byte[] bytes = ArrayUtils.toPrimitive(sublist.toArray(new Byte[0]));
+                    System.out.println(bytes.length);
+                    this.to_client.write(bytes, 0, bytes.length);
+                }
+//
+//                    int[][] all = splitArray(ArrayUtils.toPrimitive(SC_message.toArray(new Integer[0])), 4096);
+//                    for (int[] record : all) {
+//                        System.out.println(record.length);
+////                        System.out.println(new String(record, StandardCharsets.US_ASCII));
+//                        this.to_client.write(record, 0, record.length);
+//                    }
 
-                System.out.println("i am here");
+//                    for (int i=0 ; i< SC_message.size(); i++){
+//                        this.to_client.write(SC_message.get(i));
+//                    }
 
-                this.print("\n[[[Server to Client]]]");
-                this.print(from_server_to_client_msg.makeString());
-                this.print("\n");
-                this.to_client.write(from_server_to_client_msg.toBytes(), 0, msg_len);
+//                    byte[] what = ArrayUtils.toPrimitive(SC_message.toArray(new Byte[0]));
+//                    this.to_client.write(what, 0, SC_message.size());
 
-                System.out.println("after sending to client");
-
-                Thread.sleep(100);
-                HttpParser from_client_to_server_msg = new HttpParser(this.from_client);
-                from_client_to_server_msg.readRequest();
-                msg_len = from_client_to_server_msg.toBytes().length;
-
-                this.print("\n[[[Client to Server]]]");
-                this.print(from_client_to_server_msg.makeString());
-                this.print("\n");
-
-                to_remote_server.write(from_client_to_server_msg.toBytes(), 0, msg_len);
-
+                System.out.println("lkasdfl;jsdl;jf;lsadjf;sadjf;lksadjg;olaerhjsfg;lsdrhf;lkasdfhjf'l;hkjrsd");
+                break;
             }
+//                int b;
+//                char c;
+//                while ((b = from_remote_server.read()) != -1) {
+//                    c = (char) b;
+//                    this.to_client.write(b);
+//
+//                    monitoring.add((byte) c);
+//                }
+
+
         } catch (IOException | URISyntaxException | InterruptedException e) {
             e.printStackTrace();
         } finally {
@@ -159,6 +250,59 @@ class RequestHandler extends Thread {
                 e.printStackTrace();
             }
         }
+    }
+
+
+    public static int[][] splitArray(int[] arrayToSplit, int chunkSize) {
+        if (chunkSize <= 0) {
+            return null;  // just in case :)
+        }
+        // first we have to check if the array can be split in multiple
+        // arrays of equal 'chunk' size
+        int rest = arrayToSplit.length % chunkSize;  // if rest>0 then our last array will have less elements than the others
+        // then we check in how many arrays we can split our input array
+        int chunks = arrayToSplit.length / chunkSize + (rest > 0 ? 1 : 0); // we may have to add an additional array for the 'rest'
+        // now we know how many arrays we need and create our result array
+        int[][] arrays = new int[chunks][];
+        // we create our resulting arrays by copying the corresponding
+        // part from the input array. If we have a rest (rest>0), then
+        // the last array will have less elements than the others. This
+        // needs to be handled separately, so we iterate 1 times less.
+        for (int i = 0; i < (rest > 0 ? chunks - 1 : chunks); i++) {
+            // this copies 'chunk' times 'chunkSize' elements into a new array
+            arrays[i] = Arrays.copyOfRange(arrayToSplit, i * chunkSize, i * chunkSize + chunkSize);
+        }
+        if (rest > 0) { // only when we have a rest
+            // we copy the remaining elements into the last chunk
+            arrays[chunks - 1] = Arrays.copyOfRange(arrayToSplit, (chunks - 1) * chunkSize, (chunks - 1) * chunkSize + rest);
+        }
+        return arrays; // that's it
+    }
+
+    public static byte[][] splitArray(byte[] arrayToSplit, int chunkSize) {
+        if (chunkSize <= 0) {
+            return null;  // just in case :)
+        }
+        // first we have to check if the array can be split in multiple
+        // arrays of equal 'chunk' size
+        int rest = arrayToSplit.length % chunkSize;  // if rest>0 then our last array will have less elements than the others
+        // then we check in how many arrays we can split our input array
+        int chunks = arrayToSplit.length / chunkSize + (rest > 0 ? 1 : 0); // we may have to add an additional array for the 'rest'
+        // now we know how many arrays we need and create our result array
+        byte[][] arrays = new byte[chunks][];
+        // we create our resulting arrays by copying the corresponding
+        // part from the input array. If we have a rest (rest>0), then
+        // the last array will have less elements than the others. This
+        // needs to be handled separately, so we iterate 1 times less.
+        for (int i = 0; i < (rest > 0 ? chunks - 1 : chunks); i++) {
+            // this copies 'chunk' times 'chunkSize' elements into a new array
+            arrays[i] = Arrays.copyOfRange(arrayToSplit, i * chunkSize, i * chunkSize + chunkSize);
+        }
+        if (rest > 0) { // only when we have a rest
+            // we copy the remaining elements into the last chunk
+            arrays[chunks - 1] = Arrays.copyOfRange(arrayToSplit, (chunks - 1) * chunkSize, (chunks - 1) * chunkSize + rest);
+        }
+        return arrays; // that's it
     }
 
     public void run() {

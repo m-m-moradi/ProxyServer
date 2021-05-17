@@ -16,6 +16,7 @@ public class HttpParser {
 
     private boolean isRequest = false;
     private boolean isResponse = false;
+    private boolean isChunkEncoding = false;
 
     // only when isResponse is true
     private String status = null;
@@ -28,6 +29,8 @@ public class HttpParser {
     private String mainLine;
     private ArrayList<String> headers;
     private ArrayList<Byte> body;
+    private ArrayList<ArrayList<Byte>> chunked_body;
+
 
     public HttpParser(InputStream inputStream) {
         this.inputStream = inputStream;
@@ -40,17 +43,20 @@ public class HttpParser {
         StringBuilder bodyBuilder = new StringBuilder();
         ArrayList<Character> array_list_char = new ArrayList<Character>();
 
+
         char c1, c2, c3, c4;
         int b1, b2, b3, b4;
 
         while (true) {
             while ((b1 = this.inputStream.read()) != '\r') {
-                if (b1 == -1) break;
+                if (b1 == -1) return -1;
                 c1 = (char) b1;
                 array_list_char.add(c1);
+
             }
 
             b2 = this.inputStream.read(); // reading LF
+
             if (array_list_char.size() == 0) // reached last CRLF (last CRLF consumed)
                 break;
 
@@ -71,6 +77,7 @@ public class HttpParser {
         String[] mainLineParts = mainLine.split(" ");
         ArrayList<String> headers = new ArrayList<>();
         ArrayList<Byte> body = new ArrayList<>();
+        ArrayList<ArrayList<Byte>> chunked_body = new ArrayList<>();
 
         if (mainLineParts.length == 1) {
             System.out.println("******************************************");
@@ -135,7 +142,33 @@ public class HttpParser {
                 }
             }
             if (h.contains("Transfer-Encoding:")) {
+                isChunkEncoding = true;
                 if (h.contains("chunked")) {
+//                    int b, c, d, e, f;
+//                    while (true) {
+//                        while ((b = this.inputStream.read()) != '\r') {
+//                            integers_body.add(b);
+//                            body.add((byte) b);
+//                        }
+//
+//                        c = this.inputStream.read();
+//                        integers_body.add(c);
+//                        body.add((byte) c);
+//                        if (c != '\n')
+//                            continue;
+//
+//                        d = this.inputStream.read();
+//                        integers_body.add(d);
+//                        body.add((byte) d);
+//                        if (d != '\r')
+//                            continue;
+//
+//                        e = this.inputStream.read();
+//                        integers_body.add(e);
+//                        body.add((byte) e);
+//                        if (e == '\n')
+//                            break;
+//                        }
                     while (true) {
                         int b;
                         int chunkSize = 0;
@@ -144,37 +177,55 @@ public class HttpParser {
                         while ((b = this.inputStream.read()) != '\r') {
                             hex_str_builder.append((char) b);
                         }
+                        this.inputStream.read(); // Consume the trailing '\n'
 
                         String hex_str = hex_str_builder.toString();
                         chunkSize = Integer.parseInt(hex_str, 16);
 //                        System.out.println(String.format("hex: %s , number : %d", hex_str, chunkSize));
 
-                        // Consume the trailing '\n'
-                        this.inputStream.read();
                         if (chunkSize == 0) {
+
+//                            String s = Integer.toHexString(chunkSize);
+//                            body.addAll(Arrays.asList(ArrayUtils.toObject(s.getBytes(StandardCharsets.US_ASCII))));
+//                            body.add((byte) '\r');
+//                            body.add((byte) '\n');
+//
+//                            body.add((byte) '\r');
+//                            body.add((byte) '\n');
+
                             this.inputStream.read();
                             this.inputStream.read();
 
                             break;
                         } else {
+
+//                            String s = Integer.toHexString(chunkSize);
+//                            body.addAll(Arrays.asList(ArrayUtils.toObject(s.getBytes(StandardCharsets.US_ASCII))));
+//                            body.add((byte) '\r');
+//                            body.add((byte) '\n');
+
                             int counter = 0;
+                            ArrayList<Byte> real_chunk = new ArrayList<>();
                             while (counter != chunkSize) {
 //                                System.out.println(String.format("byte_num : %d , counter : %d , difference : %d", chunkSize, counter, chunkSize - counter));
                                 int difference = chunkSize - counter;
-                                byte[] chunk;
+                                byte[] little_chunk;
                                 if (difference < 1024)
-                                    chunk = new byte[difference];
+                                    little_chunk = new byte[difference];
                                 else
-                                    chunk = new byte[1024];
-                                counter += this.inputStream.read(chunk, 0, chunk.length);
-                                body.addAll(Arrays.asList(ArrayUtils.toObject(chunk)));
+                                    little_chunk = new byte[1024];
+                                counter += this.inputStream.read(little_chunk, 0, little_chunk.length);
+                                real_chunk.addAll(Arrays.asList(ArrayUtils.toObject(little_chunk)));
                             }
+                            chunked_body.add(real_chunk);
+
                             this.inputStream.read();
                             this.inputStream.read();
                         }
                     }
                 }
             }
+
 
             if (isRequest) {
                 if (h.contains("Upgrade-Insecure-Requests"))
@@ -205,21 +256,45 @@ public class HttpParser {
 
         this.mainLine = mainLine;
         this.headers = headers;
+
         this.body = body;
+        this.chunked_body = chunked_body;
 
         return 0;
     }
 
-    public byte[] toBytes() {
+    public ArrayList<Byte> toBytes() {
         StringBuilder stringBuilder = new StringBuilder();
         stringBuilder.append(this.mainLine).append("\r\n");
         for (String h : this.headers)
             stringBuilder.append(h).append("\r\n");
         stringBuilder.append("\r\n");
-        ArrayList<Byte> bytes = new ArrayList<>(Arrays.asList(ArrayUtils.toObject(stringBuilder.toString().getBytes())));
-        if (this.body.size() != 0)
-            bytes.addAll(this.body);
-        return ArrayUtils.toPrimitive(bytes.toArray(new Byte[0]));
+        ArrayList<Byte> bytes = new ArrayList<>(Arrays.asList(ArrayUtils.toObject(stringBuilder.toString().getBytes(StandardCharsets.US_ASCII))));
+        if (isChunkEncoding) {
+            for (ArrayList<Byte> chunk : this.chunked_body) {
+                int chunk_size = chunk.size();
+                String s = Integer.toHexString(chunk_size);
+                bytes.addAll(Arrays.asList(ArrayUtils.toObject(s.getBytes(StandardCharsets.US_ASCII))));
+                bytes.add((byte) '\r');
+                bytes.add((byte) '\n');
+                bytes.addAll(chunk);
+                bytes.add((byte) '\r');
+                bytes.add((byte) '\n');
+            }
+            String s = Integer.toHexString(0);
+            bytes.addAll(Arrays.asList(ArrayUtils.toObject(s.getBytes(StandardCharsets.US_ASCII))));
+            bytes.add((byte) '\r');
+            bytes.add((byte) '\n');
+            bytes.add((byte) '\r');
+            bytes.add((byte) '\n');
+        } else {
+            if (this.body.size() != 0)
+                bytes.addAll(this.body);
+        }
+//        if (this.body.size() != 0)
+//            bytes.addAll(this.body);
+//        return ArrayUtils.toPrimitive(bytes.toArray(new Byte[0]));
+        return bytes;
     }
 
     public String makeString() {
@@ -287,5 +362,6 @@ public class HttpParser {
     public ArrayList<Byte> getBody() {
         return body;
     }
+
 }
 
