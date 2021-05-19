@@ -119,6 +119,7 @@ public class HttpParser {
             }
         }
 
+
         // headers
         for (int h = 1; h < lines.length; h++) {
             String header = lines[h];
@@ -127,33 +128,37 @@ public class HttpParser {
         // https://datatracker.ietf.org/doc/html/rfc2616#section-5.1.2
         // here must implement all proxy things
         boolean there_is_host = false;
-        ArrayList<Integer> indices = new ArrayList<>();
+        ArrayList<Integer> request_filtered_indices = new ArrayList<>();
+        Integer chunked_header_index = null;
         int content_size = 0;
 
         for (String h : headers) {
-            if (h.contains("Content-Length:")) {
-                String byte_num_str = h.replace("Content-Length:", "");
+            if (isResponse) {
+                if (h.contains("Content-Length:")) {
+                    String byte_num_str = h.replace("Content-Length:", "");
 //                byte[] chunk = new byte[1024];
-                int byte_num = Integer.parseInt(byte_num_str.trim().strip());
-                int counter = 0;
-                while (counter != byte_num) {
+                    int byte_num = Integer.parseInt(byte_num_str.trim().strip());
+                    int counter = 0;
+                    while (counter != byte_num) {
 //                    System.out.println(String.format("byte_num : %d , counter : %d , difference : %d", byte_num, counter, byte_num - counter));
-                    int difference = byte_num - counter;
-                    byte[] chunk;
-                    if (difference < 1024)
-                        chunk = new byte[difference];
-                    else
-                        chunk = new byte[1024];
+                        int difference = byte_num - counter;
+                        byte[] chunk;
+                        if (difference < 1024)
+                            chunk = new byte[difference];
+                        else
+                            chunk = new byte[1024];
 
-                    counter += this.inputStream.read(chunk, 0, chunk.length);
+                        counter += this.inputStream.read(chunk, 0, chunk.length);
 
-                    body.addAll(Arrays.asList(ArrayUtils.toObject(chunk)));
-                    original_data.addAll(Arrays.asList(ArrayUtils.toObject(chunk)));
+                        body.addAll(Arrays.asList(ArrayUtils.toObject(chunk)));
+                        original_data.addAll(Arrays.asList(ArrayUtils.toObject(chunk)));
+                    }
                 }
             }
-            if (h.contains("Transfer-Encoding:")) {
-                isChunkEncoding = true;
-                if (h.contains("chunked")) {
+            if (isResponse) {
+                if (h.contains("Transfer-Encoding:")) {
+                    isChunkEncoding = true;
+                    if (h.contains("chunked")) {
 //                    int b, c, d, e, f;
 //                    while (true) {
 //                        while ((b = this.inputStream.read()) != '\r') {
@@ -179,26 +184,26 @@ public class HttpParser {
 //                        if (e == '\n')
 //                            break;
 //                        }
-                    while (true) {
-                        int b;
-                        int chunkSize = 0;
-                        StringBuilder hex_str_builder = new StringBuilder();
+                        while (true) {
+                            int b;
+                            int chunkSize = 0;
+                            StringBuilder hex_str_builder = new StringBuilder();
 
-                        while ((b = this.inputStream.read()) != '\r') {
-                            hex_str_builder.append((char) b);
-                            original_data.add((byte) b);
-                        }
+                            while ((b = this.inputStream.read()) != '\r') {
+                                hex_str_builder.append((char) b);
+                                original_data.add((byte) b);
+                            }
 
-                        original_data.add((byte) '\r');
-                        original_data.add((byte) '\n');
+                            original_data.add((byte) '\r');
+                            original_data.add((byte) '\n');
 
-                        this.inputStream.read(); // Consume the trailing '\n'
+                            this.inputStream.read(); // Consume the trailing '\n'
 
-                        String hex_str = hex_str_builder.toString();
-                        chunkSize = Integer.parseInt(hex_str, 16);
+                            String hex_str = hex_str_builder.toString();
+                            chunkSize = Integer.parseInt(hex_str, 16);
 //                        System.out.println(String.format("hex: %s , number : %d", hex_str, chunkSize));
 
-                        if (chunkSize == 0) {
+                            if (chunkSize == 0) {
 
 //                            String s = Integer.toHexString(chunkSize);
 //                            body.addAll(Arrays.asList(ArrayUtils.toObject(s.getBytes(StandardCharsets.US_ASCII))));
@@ -208,79 +213,86 @@ public class HttpParser {
 //                            body.add((byte) '\r');
 //                            body.add((byte) '\n');
 
-                            original_data.add((byte) '\r');
-                            original_data.add((byte) '\n');
+                                original_data.add((byte) '\r');
+                                original_data.add((byte) '\n');
 
-                            this.inputStream.read();
-                            this.inputStream.read();
+                                this.inputStream.read();
+                                this.inputStream.read();
 
-                            break;
-                        } else {
+                                break;
+                            } else {
 
 //                            String s = Integer.toHexString(chunkSize);
 //                            body.addAll(Arrays.asList(ArrayUtils.toObject(s.getBytes(StandardCharsets.US_ASCII))));
 //                            body.add((byte) '\r');
 //                            body.add((byte) '\n');
 
-                            int counter = 0;
-                            ArrayList<Byte> real_chunk = new ArrayList<>();
-                            while (counter != chunkSize) {
+                                int counter = 0;
+                                ArrayList<Byte> real_chunk = new ArrayList<>();
+                                while (counter != chunkSize) {
 //                                System.out.println(String.format("byte_num : %d , counter : %d , difference : %d", chunkSize, counter, chunkSize - counter));
-                                int difference = chunkSize - counter;
-                                byte[] little_chunk;
-                                if (difference < 1024)
-                                    little_chunk = new byte[difference];
-                                else
-                                    little_chunk = new byte[1024];
-                                counter += this.inputStream.read(little_chunk, 0, little_chunk.length);
-                                content_size += little_chunk.length;
-                                real_chunk.addAll(Arrays.asList(ArrayUtils.toObject(little_chunk)));
-                                original_data.addAll(Arrays.asList(ArrayUtils.toObject(little_chunk)));
+                                    int difference = chunkSize - counter;
+                                    byte[] little_chunk;
+                                    if (difference < 1024)
+                                        little_chunk = new byte[difference];
+                                    else
+                                        little_chunk = new byte[1024];
+                                    counter += this.inputStream.read(little_chunk, 0, little_chunk.length);
+                                    content_size += little_chunk.length;
+                                    real_chunk.addAll(Arrays.asList(ArrayUtils.toObject(little_chunk)));
+                                    original_data.addAll(Arrays.asList(ArrayUtils.toObject(little_chunk)));
+                                }
+                                chunked_body.add(real_chunk);
+
+                                original_data.add((byte) '\r');
+                                original_data.add((byte) '\n');
+
+                                this.inputStream.read();
+                                this.inputStream.read();
                             }
-                            chunked_body.add(real_chunk);
-
-                            original_data.add((byte) '\r');
-                            original_data.add((byte) '\n');
-
-                            this.inputStream.read();
-                            this.inputStream.read();
                         }
                     }
-
-
                 }
             }
 
 
             if (isRequest) {
                 if (h.contains("Upgrade-Insecure-Requests"))
-                    indices.add(headers.indexOf(h));
+                    request_filtered_indices.add(headers.indexOf(h));
 
                 if (h.contains("If-"))
-                    indices.add(headers.indexOf(h));
+                    request_filtered_indices.add(headers.indexOf(h));
 
                 if (h.contains("Host:"))
                     there_is_host = true;
+            }
 
+            if (isResponse) {
                 if (h.contains("Transfer-Encoding:"))
                     if (h.contains("chunked"))
-                        indices.add(headers.indexOf(h));
+                        chunked_header_index = headers.indexOf(h);
             }
         }
+        // end of iteration over headers
+
+        if (isResponse)
+            if (isChunkEncoding) {
+                if (chunked_header_index != null) {
+                    headers.remove((int) chunked_header_index);
+                    headers.add("Content-Length: " + content_size);
+                }
+            }
 
         if (isRequest) {
             if (!there_is_host) headers.add("Host:");
-
             for (int x = headers.size() - 1; x > 0; x--) {
-                for (int y : indices) {
+                for (int y : request_filtered_indices) {
                     if (x == y)
                         headers.remove(x);
                 }
             }
 
-            if (isChunkEncoding) {
-                headers.add("Content-Length: " + content_size);
-            }
+
         }
 
         this.firstLinePart1 = firstPart;
@@ -293,6 +305,11 @@ public class HttpParser {
         this.body = body;
         this.chunked_body = chunked_body;
         this.original_data = original_data;
+
+        if (isChunkEncoding){
+            for (ArrayList<Byte> a : chunked_body)
+                body.addAll(a);
+        }
 
         return 0;
     }

@@ -120,8 +120,8 @@ class RequestHandler extends Thread {
         InputStream from_remote_server =  remote_socket.getInputStream();
         OutputStream to_remote_server = remote_socket.getOutputStream();
 
-        ArrayList<Byte> message = httpParser.toBytes();
 
+        ArrayList<Byte> message = httpParser.toBytes();
         this.print(httpParser.makeString(), true);
 
         int chunk_size = 4096;
@@ -146,7 +146,9 @@ class RequestHandler extends Thread {
                         byte[] bytes = ArrayUtils.toPrimitive(sublist.toArray(new Byte[0]));
 //                    System.out.println(bytes.length);
                         this.to_client.write(bytes, 0, bytes.length);
+                        to_client.flush();
                     }
+
                 }
             } catch (Exception e) {
                 this.socket.close();
@@ -166,7 +168,9 @@ class RequestHandler extends Thread {
                         List<Byte> sublist = CS_message.subList(i, Math.min(i + chunk_size, CS_message.size()));
                         byte[] bytes = ArrayUtils.toPrimitive(sublist.toArray(new Byte[0]));
                         to_remote_server.write(bytes, 0, bytes.length);
+                        to_remote_server.flush();
                     }
+
                 }
             } catch (Exception e) {
                 this.socket.close();
