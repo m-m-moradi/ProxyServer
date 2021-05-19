@@ -1,3 +1,4 @@
+import org.apache.commons.httpclient.ChunkedInputStream;
 import org.apache.commons.lang3.ArrayUtils;
 
 import java.io.IOException;
@@ -29,7 +30,7 @@ public class HttpParser {
     private String mainLine;
     private ArrayList<String> headers;
     private ArrayList<Byte> body;
-    private ArrayList<ArrayList<Byte>> chunked_body;
+//    private ArrayList<ArrayList<Byte>> chunked_body;
     private ArrayList<Byte> original_data;
 
 
@@ -184,79 +185,90 @@ public class HttpParser {
 //                        if (e == '\n')
 //                            break;
 //                        }
-                        while (true) {
-                            int b;
-                            int chunkSize = 0;
-                            StringBuilder hex_str_builder = new StringBuilder();
 
-                            while ((b = this.inputStream.read()) != '\r') {
-                                hex_str_builder.append((char) b);
-                                original_data.add((byte) b);
-                            }
 
-                            original_data.add((byte) '\r');
-                            original_data.add((byte) '\n');
-
-                            this.inputStream.read(); // Consume the trailing '\n'
-
-                            String hex_str = hex_str_builder.toString();
-                            chunkSize = Integer.parseInt(hex_str, 16);
-//                        System.out.println(String.format("hex: %s , number : %d", hex_str, chunkSize));
-
-                            if (chunkSize == 0) {
-
-//                            String s = Integer.toHexString(chunkSize);
-//                            body.addAll(Arrays.asList(ArrayUtils.toObject(s.getBytes(StandardCharsets.US_ASCII))));
-//                            body.add((byte) '\r');
-//                            body.add((byte) '\n');
+//                        while (true) {
+//                            int b;
+//                            int chunkSize = 0;
+//                            StringBuilder hex_str_builder = new StringBuilder();
 //
-//                            body.add((byte) '\r');
-//                            body.add((byte) '\n');
+//                            while ((b = this.inputStream.read()) != '\r') {
+//                                hex_str_builder.append((char) b);
+//                                original_data.add((byte) b);
+//                            }
+//
+//                            original_data.add((byte) '\r');
+//                            original_data.add((byte) '\n');
+//
+//                            this.inputStream.read(); // Consume the trailing '\n'
+//
+//                            String hex_str = hex_str_builder.toString();
+//                            chunkSize = Integer.parseInt(hex_str, 16);
+////                        System.out.println(String.format("hex: %s , number : %d", hex_str, chunkSize));
+//
+//                            if (chunkSize == 0) {
+//
+////                            String s = Integer.toHexString(chunkSize);
+////                            body.addAll(Arrays.asList(ArrayUtils.toObject(s.getBytes(StandardCharsets.US_ASCII))));
+////                            body.add((byte) '\r');
+////                            body.add((byte) '\n');
+////
+////                            body.add((byte) '\r');
+////                            body.add((byte) '\n');
+//
+//                                original_data.add((byte) '\r');
+//                                original_data.add((byte) '\n');
+//
+//                                this.inputStream.read();
+//                                this.inputStream.read();
+//
+//                                break;
+//                            } else {
+//
+////                            String s = Integer.toHexString(chunkSize);
+////                            body.addAll(Arrays.asList(ArrayUtils.toObject(s.getBytes(StandardCharsets.US_ASCII))));
+////                            body.add((byte) '\r');
+////                            body.add((byte) '\n');
+//
+//                                int counter = 0;
+//                                ArrayList<Byte> real_chunk = new ArrayList<>();
+//                                while (counter != chunkSize) {
+////                                System.out.println(String.format("byte_num : %d , counter : %d , difference : %d", chunkSize, counter, chunkSize - counter));
+//                                    int difference = chunkSize - counter;
+//                                    byte[] little_chunk;
+//                                    if (difference < 1024)
+//                                        little_chunk = new byte[difference];
+//                                    else
+//                                        little_chunk = new byte[1024];
+//                                    counter += this.inputStream.read(little_chunk, 0, little_chunk.length);
+//                                    content_size += little_chunk.length;
+//                                    real_chunk.addAll(Arrays.asList(ArrayUtils.toObject(little_chunk)));
+//                                    original_data.addAll(Arrays.asList(ArrayUtils.toObject(little_chunk)));
+//                                }
+//                                chunked_body.add(real_chunk);
+//
+//                                original_data.add((byte) '\r');
+//                                original_data.add((byte) '\n');
+//
+//                                this.inputStream.read();
+//                                this.inputStream.read();
+//                            }
+//                        }
 
-                                original_data.add((byte) '\r');
-                                original_data.add((byte) '\n');
-
-                                this.inputStream.read();
-                                this.inputStream.read();
-
-                                break;
-                            } else {
-
-//                            String s = Integer.toHexString(chunkSize);
-//                            body.addAll(Arrays.asList(ArrayUtils.toObject(s.getBytes(StandardCharsets.US_ASCII))));
-//                            body.add((byte) '\r');
-//                            body.add((byte) '\n');
-
-                                int counter = 0;
-                                ArrayList<Byte> real_chunk = new ArrayList<>();
-                                while (counter != chunkSize) {
-//                                System.out.println(String.format("byte_num : %d , counter : %d , difference : %d", chunkSize, counter, chunkSize - counter));
-                                    int difference = chunkSize - counter;
-                                    byte[] little_chunk;
-                                    if (difference < 1024)
-                                        little_chunk = new byte[difference];
-                                    else
-                                        little_chunk = new byte[1024];
-                                    counter += this.inputStream.read(little_chunk, 0, little_chunk.length);
-                                    content_size += little_chunk.length;
-                                    real_chunk.addAll(Arrays.asList(ArrayUtils.toObject(little_chunk)));
-                                    original_data.addAll(Arrays.asList(ArrayUtils.toObject(little_chunk)));
-                                }
-                                chunked_body.add(real_chunk);
-
-                                original_data.add((byte) '\r');
-                                original_data.add((byte) '\n');
-
-                                this.inputStream.read();
-                                this.inputStream.read();
-                            }
-                        }
+                        int i;
+                        ChunkedInputStream chunkedInputStream =  new ChunkedInputStream(this.inputStream);
+                        while((i = chunkedInputStream.read()) != -1)
+                            body.add((byte) i);
                     }
                 }
             }
 
 
             if (isRequest) {
+                if (h.contains("Content-Type:"))
+                    if (h.contains("text/html") && !h.contains("UTF-8"))
+                        h = "Content-Type: text/html; charset=UTF-8";
+
                 if (h.contains("Upgrade-Insecure-Requests"))
                     request_filtered_indices.add(headers.indexOf(h));
 
@@ -279,7 +291,8 @@ public class HttpParser {
             if (isChunkEncoding) {
                 if (chunked_header_index != null) {
                     headers.remove((int) chunked_header_index);
-                    headers.add("Content-Length: " + content_size);
+//                    headers.add("Content-Length: " + content_size);
+                    headers.add("Content-Length: " + body.size());
                 }
             }
 
@@ -303,13 +316,8 @@ public class HttpParser {
         this.headers = headers;
 
         this.body = body;
-        this.chunked_body = chunked_body;
+//        this.chunked_body = chunked_body;
         this.original_data = original_data;
-
-        if (isChunkEncoding){
-            for (ArrayList<Byte> a : chunked_body)
-                body.addAll(a);
-        }
 
         return 0;
     }
@@ -339,16 +347,18 @@ public class HttpParser {
 //            bytes.add((byte) '\r');
 //            bytes.add((byte) '\n');
 
-        if (isChunkEncoding) {
-            for (ArrayList<Byte> chunk : this.chunked_body) {
-                bytes.addAll(chunk);
-            }
-        } else {
-            if (this.body.size() != 0)
-                bytes.addAll(this.body);
-        }
-//        if (this.body.size() != 0)
-//            bytes.addAll(this.body);
+//        if (isChunkEncoding) {
+//            for (ArrayList<Byte> chunk : this.chunked_body) {
+//                bytes.addAll(chunk);
+//            }
+//        } else {
+//            if (this.body.size() != 0)
+//                bytes.addAll(this.body);
+//        }
+
+
+        if (this.body.size() != 0)
+            bytes.addAll(this.body);
 //        return ArrayUtils.toPrimitive(bytes.toArray(new Byte[0]));
         return bytes;
     }

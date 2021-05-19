@@ -3,7 +3,6 @@ import org.apache.commons.lang3.ArrayUtils;
 import java.io.*;
 import java.net.ServerSocket;
 import java.net.Socket;
-import java.net.URISyntaxException;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -117,7 +116,7 @@ class RequestHandler extends Thread {
     public void handleHTTP(String remote_host, int remote_port, HttpParser httpParser) throws IOException, InterruptedException {
 
         Socket remote_socket = new Socket(remote_host, remote_port);
-        InputStream from_remote_server =  remote_socket.getInputStream();
+        InputStream from_remote_server = remote_socket.getInputStream();
         OutputStream to_remote_server = remote_socket.getOutputStream();
 
 
@@ -131,22 +130,20 @@ class RequestHandler extends Thread {
             to_remote_server.write(bytes, 0, bytes.length);
         }
 
-
         while (true) {
             try {
                 HttpParser from_server_to_client_msg = new HttpParser(from_remote_server);
                 if (from_server_to_client_msg.readRequest() != -2) {
 //                    ArrayList<Byte> SC_message = from_server_to_client_msg.toBytes();
-                    ArrayList<Byte> SC_message = from_server_to_client_msg.getOriginal_data();
+                    ArrayList<Byte> SC_message = from_server_to_client_msg.toBytes();
 
                     this.print(from_server_to_client_msg.makeString(), true);
 
                     for (int i = 0; i < SC_message.size(); i += chunk_size) {
                         List<Byte> sublist = SC_message.subList(i, Math.min(i + chunk_size, SC_message.size()));
                         byte[] bytes = ArrayUtils.toPrimitive(sublist.toArray(new Byte[0]));
-//                    System.out.println(bytes.length);
                         this.to_client.write(bytes, 0, bytes.length);
-                        to_client.flush();
+
                     }
 
                 }
@@ -188,7 +185,7 @@ class RequestHandler extends Thread {
             this.print(String.format("Connection number: %d", this.connection_number), true);
             this.print(String.format("Socket: %s", this.socket), true);
 
-            this.from_client =  socket.getInputStream();
+            this.from_client = socket.getInputStream();
             this.to_client = socket.getOutputStream();
 
             HttpParser httpParser = new HttpParser(this.from_client);
