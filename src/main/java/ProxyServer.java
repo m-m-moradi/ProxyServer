@@ -10,7 +10,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 
-@SuppressWarnings("unchecked")
+
 public class ProxyServer {
     static DefaultListModel<String> blocked_urls;
     static String padding = "    ";
@@ -59,18 +59,9 @@ public class ProxyServer {
         JPanel center = new JPanel(new BorderLayout());
         JPanel status_bar = new JPanel(new GridLayout(10, 1));
 
-        // Text Area at the Center
-
         JList<String> list = new JList<>(blocked_urls);
         list.setFixedCellWidth(frame_width - 100);
         JScrollPane scrollPane = new JScrollPane(list);
-//
-
-        // Initialize the list with items
-//        String[] items = {"    A", "    B", "    C", "    D"};
-//        for (int i = 0; i < items.length; i++) {
-//            model.add(i, items[i]);
-//        }
 
         connections_num_label = new JLabel("connections: " + 0 + padding);
         blocked_num_label = new JLabel("Blocked:" + blocked_urls.getSize() + padding);
@@ -189,12 +180,6 @@ class RequestHandler extends Thread {
                     c = (char) b;
                     to_remote_server.write(b);
                 }
-
-//                while ((request_bytes_read = this.from_client.read(request)) != -1) { // todo : when is the -1?
-////                    this.print(new String(request, StandardCharsets.UTF_8));
-//                    to_remote_server.write(request, 0, request_bytes_read);
-//                }
-
             } catch (IOException e) {
                 System.out.println("Connection with client #" + connection_number + " closed");
                 this.connections.getAndDecrement();
@@ -272,9 +257,6 @@ class RequestHandler extends Thread {
                     byte[] bytes = ArrayUtils.toPrimitive(sublist.toArray(new Byte[0]));
                     this.to_client.write(bytes, 0, bytes.length);
                 }
-//                    this.to_client.write("\r\n\r\n".getBytes(), 0, 4);
-//                    this.to_client.flush();
-//                    Thread.sleep(10);
             }
         }
     }

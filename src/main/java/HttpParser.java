@@ -30,8 +30,9 @@ public class HttpParser {
     private String mainLine;
     private ArrayList<String> headers;
     private ArrayList<Byte> body;
-//    private ArrayList<ArrayList<Byte>> chunked_body;
+    private ArrayList<ArrayList<Byte>> chunked_body;
     private ArrayList<Byte> original_data;
+
 
 
     public HttpParser(InputStream inputStream) {
@@ -316,7 +317,7 @@ public class HttpParser {
         this.headers = headers;
 
         this.body = body;
-//        this.chunked_body = chunked_body;
+        this.chunked_body = chunked_body;
         this.original_data = original_data;
 
         return 0;
