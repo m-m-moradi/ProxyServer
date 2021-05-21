@@ -265,9 +265,9 @@ public class HttpParser {
 
 
             if (isRequest) {
-                if (h.contains("Content-Type:"))
-                    if (h.contains("text/html") && !h.contains("UTF-8"))
-                        h = "Content-Type: text/html; charset=UTF-8";
+//                if (h.contains("Content-Type:"))
+//                    if (h.contains("text/html") && !h.contains("UTF-8"))
+//                        h = "Content-Type: text/html; charset=UTF-8";
 
                 if (h.contains("Upgrade-Insecure-Requests"))
                     request_filtered_indices.add(headers.indexOf(h));
