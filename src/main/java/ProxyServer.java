@@ -6,7 +6,9 @@ import java.io.*;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.URISyntaxException;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -16,7 +18,10 @@ public class ProxyServer {
     static String padding = "    ";
     static JLabel connections_num_label;
     static JLabel blocked_num_label;
+    static JLabel cache_size;
+    static DefaultListModel<String> cache_list;
     static volatile AtomicInteger connections;
+    static volatile HashMap<String, ArrayList<Byte>> cache;
 
     static class OptionPaneExample {
         JFrame f;
@@ -32,9 +37,14 @@ public class ProxyServer {
         blocked_num_label.setText("Blocked:" + blocked_urls.getSize() + padding);
     }
 
+    static void updateCacheView(){
+        cache_size.setText("Cached:" + cache.size() + padding);
+    }
+
     public static void main(String[] args) throws Exception {
 
         blocked_urls = new DefaultListModel<>();
+        cache = new HashMap<>();
 
         int frame_width = 500;
         int frame_height = 300;
@@ -108,12 +118,54 @@ public class ProxyServer {
         frame.setVisible(true);
 
 
+
+
+        int cache_frame_width = 700;
+        int cache_frame_height = 300;
+        //Creating the Frame
+        JFrame cache_frame = new JFrame("Cache Setting");
+        cache_frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+        cache_frame.setSize(cache_frame_width, cache_frame_height);
+
+
+        cache_list = new DefaultListModel<String>();
+        JList<String> cache_list_component = new JList<>(cache_list);
+        cache_list_component.setFixedCellWidth(cache_frame_width - 100);
+        JScrollPane cache_scrollPane = new JScrollPane(cache_list_component);
+
+        cache_size = new JLabel("Cached:" + cache.size() + padding);
+
+
+        JPanel cache_panel = new JPanel();
+        JButton clearAll = new JButton("clear all");
+        clearAll.addActionListener(e -> {
+            cache.clear();
+            cache_list.clear();
+        });
+        JButton delete = new JButton("delete");
+        delete.addActionListener(e -> {
+            List<String> selected = cache_list_component.getSelectedValuesList();
+            for (String s : selected) {
+                cache.remove(s);
+                cache_list.removeElement(s);
+            }
+        });
+
+        cache_panel.add(clearAll);
+        cache_panel.add(delete);
+
+        //Adding Components to the frame.
+        cache_frame.getContentPane().add(BorderLayout.SOUTH, cache_panel);
+        cache_frame.getContentPane().add(BorderLayout.NORTH, mb);
+        cache_frame.getContentPane().add(BorderLayout.CENTER, cache_scrollPane);
+        cache_frame.setVisible(true);
+
         System.out.println("The Proxy server is running.");
         connections = new AtomicInteger(0);
         try (ServerSocket listener = new ServerSocket(9998)) {
             while (true) {
                 System.out.println("Waiting for a client to connect...");
-                new RequestHandler(listener.accept(), connections.getAndIncrement(), blocked_urls, connections).start();
+                new RequestHandler(listener.accept(), connections.getAndIncrement(), blocked_urls, connections, cache, cache_list).start();
                 updateStatus();
             }
         }
@@ -125,16 +177,19 @@ class RequestHandler extends Thread {
     private final Socket socket;
     private final DefaultListModel<String> blocked_urls;
     private AtomicInteger connections;
+    HashMap<String, ArrayList<Byte>> cache;
     InputStream from_client;
     OutputStream to_client;
     FileWriter log;
+    DefaultListModel<String> cache_list;
 
-    public RequestHandler(Socket socket, int connection_number, DefaultListModel<String> blocked_urls, AtomicInteger connections) throws IOException {
-
+    public RequestHandler(Socket socket, int connection_number, DefaultListModel<String> blocked_urls, AtomicInteger connections, HashMap<String, ArrayList<Byte>> cache, DefaultListModel<String> cache_list) throws IOException {
+        this.cache = cache;
         this.socket = socket;
         this.connection_number = connection_number;
         this.blocked_urls = blocked_urls;
         this.connections = connections;
+        this.cache_list = cache_list;
 
         System.out.println(String.format("\n----------- [connection: %d | socket: %s] ------------",
                 connection_number,
@@ -150,11 +205,9 @@ class RequestHandler extends Thread {
     }
 
     public void print(String message, boolean terminal) throws IOException {
-        this.log.write("\n\n");
         if (terminal)
             System.out.println(message);
         this.log.write(message);
-        this.log.write("\n\n");
     }
 
     public void handleHTTPS(String remote_host, int remote_port) throws IOException {
@@ -216,41 +269,26 @@ class RequestHandler extends Thread {
             to_remote_server.write(bytes, 0, bytes.length);
         }
 
-        new Thread(() -> {
-            try {
-                while (true) {
-                    HttpParser from_client_to_server_msg = new HttpParser(this.from_client);
-                    if (from_client_to_server_msg.readRequest() != -2) {
-                        ArrayList<Byte> CS_message = from_client_to_server_msg.toBytes();
-
-                        this.print(from_client_to_server_msg.makeString(), true);
-
-                        for (int i = 0; i < CS_message.size(); i += chunk_size) {
-                            List<Byte> sublist = CS_message.subList(i, Math.min(i + chunk_size, CS_message.size()));
-                            byte[] bytes = ArrayUtils.toPrimitive(sublist.toArray(new Byte[0]));
-                            to_remote_server.write(bytes, 0, bytes.length);
-                        }
-                    }
-                }
-            } catch (Exception e) {
-                System.out.println("Connection with client #" + connection_number + " closed");
-                this.connections.getAndDecrement();
-                try {
-                    this.socket.close();
-                    this.log.close();
-                } catch (IOException ignored) {
-                }
-            }
-        }).start();
-
+        HttpParser from_server_to_client_msg = new HttpParser(from_remote_server);
+        HttpParser from_client_to_server_msg = new HttpParser(this.from_client);
+        boolean cache_it = false;
 
         while (true) {
-            HttpParser from_server_to_client_msg = new HttpParser(from_remote_server);
             if (from_server_to_client_msg.readRequest() != -2) {
-
                 ArrayList<Byte> SC_message = from_server_to_client_msg.toBytes();
-
                 this.print(from_server_to_client_msg.makeString(), true);
+
+                if (!cache.containsKey(httpParser.getFirstLinePart2()) &&
+                        Integer.parseInt(from_server_to_client_msg.getFirstLinePart2()) / 100 == 2) {
+                    cache.put(httpParser.getFirstLinePart2(), SC_message);
+                    cache_list.addElement(httpParser.getFirstLinePart2());
+                }
+
+                if (cache_it && Integer.parseInt(from_server_to_client_msg.getFirstLinePart2()) / 100 == 2) {
+                    cache.put(from_client_to_server_msg.getFirstLinePart2(), SC_message);
+                    cache_list.addElement(from_client_to_server_msg.getFirstLinePart2());
+                    cache_it = false;
+                }
 
                 for (int i = 0; i < SC_message.size(); i += chunk_size) {
                     List<Byte> sublist = SC_message.subList(i, Math.min(i + chunk_size, SC_message.size()));
@@ -258,7 +296,37 @@ class RequestHandler extends Thread {
                     this.to_client.write(bytes, 0, bytes.length);
                 }
             }
+
+
+            while (true) {
+                if (from_client_to_server_msg.readRequest() != -2) {
+                    ArrayList<Byte> CS_message = from_client_to_server_msg.toBytes();
+                    this.print(from_client_to_server_msg.makeString(), true);
+                    String resource = from_client_to_server_msg.getFirstLinePart2();
+                    if (cache.containsKey(resource)) {
+                        ArrayList<Byte> cached_message = cache.get(resource);
+                        for (int i = 0; i < cached_message.size(); i += chunk_size) {
+                            List<Byte> sublist = cached_message.subList(i, Math.min(i + chunk_size, cached_message.size()));
+                            byte[] bytes = ArrayUtils.toPrimitive(sublist.toArray(new Byte[0]));
+                            this.to_client.write(bytes, 0, bytes.length);
+                        }
+                    } else {
+                        cache.put(resource, null);
+                        cache_it = true;
+                        for (int i = 0; i < CS_message.size(); i += chunk_size) {
+                            List<Byte> sublist = CS_message.subList(i, Math.min(i + chunk_size, CS_message.size()));
+                            byte[] bytes = ArrayUtils.toPrimitive(sublist.toArray(new Byte[0]));
+                            to_remote_server.write(bytes, 0, bytes.length);
+                        }
+                        break;
+                    }
+                }
+            }
         }
+    }
+
+    public String stringify(ArrayList<Byte> bytes) {
+        return new String(ArrayUtils.toPrimitive(bytes.toArray(new Byte[0])), StandardCharsets.US_ASCII);
     }
 
     public void run() {
@@ -311,6 +379,7 @@ class RequestHandler extends Thread {
         } catch (Exception e) {
             System.out.println("Error handling client #" + connection_number);
             System.out.println(e.getLocalizedMessage());
+//            e.printStackTrace();
         } finally {
             connections.getAndDecrement();
         }

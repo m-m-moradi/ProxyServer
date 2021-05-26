@@ -8,6 +8,7 @@ import java.net.URISyntaxException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
 
 public class HttpParser {
     private final InputStream inputStream;
@@ -193,10 +194,24 @@ public class HttpParser {
 //                            int chunkSize = 0;
 //                            StringBuilder hex_str_builder = new StringBuilder();
 //
-//                            while ((b = this.inputStream.read()) != '\r') {
+//
+//                            while (true) {
+//                                b = this.inputStream.read();
+//                                if (b == '\r')
+//                                    break;
+//                                else if (b == ';') {
+//                                    while (this.inputStream.read() != '\r') ; // consuming token
+//                                    break;
+//                                }
 //                                hex_str_builder.append((char) b);
 //                                original_data.add((byte) b);
 //                            }
+//
+//
+////                            while ((b = this.inputStream.read()) != '\r') {
+////                                hex_str_builder.append((char) b);
+////                                original_data.add((byte) b);
+////                            }
 //
 //                            original_data.add((byte) '\r');
 //                            original_data.add((byte) '\n');
@@ -257,9 +272,30 @@ public class HttpParser {
 //                        }
 
                         int i;
-                        ChunkedInputStream chunkedInputStream =  new ChunkedInputStream(this.inputStream);
-                        while((i = chunkedInputStream.read()) != -1)
-                            body.add((byte) i);
+                        boolean f1 = false, f2 = false, f3 = false, f4 = false;
+                        ArrayList<Byte> temp = new ArrayList<>();
+                        ChunkedInputStream chunkedInputStream = new ChunkedInputStream(this.inputStream);
+                        while ((i = chunkedInputStream.read()) != -1) {
+                            temp.add((byte) i);
+//
+//                            if (i == 48 && !f1 && !f2 && !f3 && !f4)
+//                                f1 = true;
+//                            else if (i == 13 && f1 && !f2 && !f3 && !f4)
+//                                f2 = true;
+//                            else if (i == 10 && f1 && f2 && !f3 && !f4)
+//                                f3 = true;
+//                            else if (i == 13 && f1 && f2 && f3 && !f4)
+//                                f4 = true;
+//                            else if (i == 10 && f1 && f2 && f3 && f4)
+//                                break;
+//                            else {
+//                                f1 = false;
+//                                f2 = false;
+//                                f3 = false;
+//                                f4 = false;
+//                            }
+                        }
+                        chunked_body.add(temp);
                     }
                 }
             }
@@ -293,7 +329,10 @@ public class HttpParser {
                 if (chunked_header_index != null) {
                     headers.remove((int) chunked_header_index);
 //                    headers.add("Content-Length: " + content_size);
-                    headers.add("Content-Length: " + body.size());
+                    int size = 0;
+                    for (ArrayList<Byte> b: chunked_body)
+                        size += b.size();
+                    headers.add("Content-Length: " + size);
                 }
             }
 
@@ -348,18 +387,18 @@ public class HttpParser {
 //            bytes.add((byte) '\r');
 //            bytes.add((byte) '\n');
 
-//        if (isChunkEncoding) {
-//            for (ArrayList<Byte> chunk : this.chunked_body) {
-//                bytes.addAll(chunk);
-//            }
-//        } else {
-//            if (this.body.size() != 0)
-//                bytes.addAll(this.body);
-//        }
+        if (isChunkEncoding) {
+            for (ArrayList<Byte> chunk : this.chunked_body) {
+                bytes.addAll(chunk);
+            }
+        } else {
+            if (this.body.size() != 0)
+                bytes.addAll(this.body);
+        }
 
 
-        if (this.body.size() != 0)
-            bytes.addAll(this.body);
+//        if (this.body.size() != 0)
+//            bytes.addAll(this.body);
 //        return ArrayUtils.toPrimitive(bytes.toArray(new Byte[0]));
         return bytes;
     }
